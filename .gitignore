@@ -1,0 +1,8 @@
+.env*
+!.env.example
+*.pem
+*.key
+*.mmdb
+*.mp3
+__pycache__/
+clickhouse_data/
