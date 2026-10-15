@@ -1,0 +1,67 @@
+<icecast>
+    <location>StreamNetworx Dev</location>
+    <admin>tech@streammedia.org.za</admin>
+    <limits>
+        <clients>1000</clients>
+        <sources>100</sources>
+        <burst-size>65536</burst-size>
+        <queue-size>524288</queue-size>
+    </limits>
+    <authentication>
+        <source-password>HackmeIcecastPass</source-password>
+        <admin-user>admin</admin-user>
+        <admin-password>HackmeAdminPass</admin-password>
+    </authentication>
+    <listen-socket>
+        <port>8000</port>
+        <bind-address>0.0.0.0</bind-address>
+    </listen-socket>
+    
+    <!-- Emergency Mount (Hidden from public directory listings) -->
+    <mount type="normal">
+        <mount-name>/emergency.mp3</mount-name>
+        <hidden>1</hidden>
+    </mount>
+
+    <!-- Station 1 Mount with Seamless Emergency Fallback -->
+    <mount type="normal">
+        <mount-name>/station1.mp3</mount-name>
+        <fallback-mount>/emergency.mp3</fallback-mount>
+        <fallback-override>1</fallback-override>
+    </mount>
+
+    <!-- Station 2 Mount with Seamless Emergency Fallback -->
+    <mount type="normal">
+        <mount-name>/station2.mp3</mount-name>
+        <fallback-mount>/emergency.mp3</fallback-mount>
+        <fallback-override>1</fallback-override>
+    </mount>
+
+    <!-- Legacy / Campus Mount -->
+    <mount type="normal">
+        <mount-name>/live/pukfm.mp3</mount-name>
+        <fallback-mount>/emergency.mp3</fallback-mount>
+        <fallback-override>1</fallback-override>
+    </mount>
+
+    <paths>
+        <logdir>/var/log/icecast2</logdir>
+        <webroot>/usr/share/icecast2/web</webroot>
+        <adminroot>/usr/share/icecast2/admin</adminroot>
+        <alias source="/" destination="/status.xsl"/>
+    </paths>
+    <security>
+        <chroot>0</chroot>
+        <changeowner>
+            <user>icecast2</user>
+            <group>icecast</group>
+        </changeowner>
+    </security>
+
+    <!-- Eden Radio Mount with Seamless Fallback -->
+    <mount type="normal">
+        <mount-name>/edenradio.mp3</mount-name>
+        <fallback-mount>/emergency.mp3</fallback-mount>
+        <fallback-override>1</fallback-override>
+    </mount>
+</icecast>

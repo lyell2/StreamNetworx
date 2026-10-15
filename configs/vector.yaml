@@ -1,0 +1,86 @@
+data_dir: /var/lib/vector
+
+sources:
+  nginx_syslog:
+    type: syslog
+    mode: udp
+    address: 0.0.0.0:5140
+
+transforms:
+  parse_stream_session:
+    type: remap
+    inputs:
+      - nginx_syslog
+    source: |
+      parsed, err = parse_json(.message)
+      if err != null {
+        abort
+      }
+
+      # Drop non-stream endpoints (scanners, status JSON, healthz)
+      mount_path = to_string(parsed.mount) ?? to_string(parsed.uri) ?? ""
+      if !ends_with(mount_path, ".mp3") && !ends_with(mount_path, ".aac") {
+        abort
+      }
+
+
+      .event = "disconnect"
+      .timestamp_ms = to_int(parsed.timestamp_ms) ?? (to_unix_timestamp(now()) * 1000)
+      duration_sec = to_float(parsed.duration) ?? 0.0
+      .duration = duration_sec
+      .started_at = to_int(.timestamp_ms - (duration_sec * 1000.0))
+
+      .node_id = to_string(parsed.node_id) ?? "sa-1-monitoring"
+      .client_ip = to_string(parsed.client_ip) ?? "127.0.0.1"
+      .mount = to_string(parsed.mount) ?? "/station1.mp3"
+      .status = to_int(parsed.status) ?? 200
+      .bytes_sent = to_int(parsed.bytes_sent) ?? 0
+      .user_agent = to_string(parsed.user_agent) ?? ""
+      .referer = to_string(parsed.referer) ?? ""
+      .ssl_protocol = to_string(parsed.ssl_protocol) ?? ""
+      .ssl_cipher = to_string(parsed.ssl_cipher) ?? ""
+
+      # Identifiers & flags
+      .lid = to_string(parsed.lid) ?? ""
+      .sid = to_string(parsed.sid) ?? ""
+
+      raw_bill = to_string(parsed.billable) ?? "1"
+      ua = downcase(to_string(.user_agent))
+      if raw_bill == "0" || contains(ua, "watchdog") {
+        .billable = 0
+      } else {
+        raw_bill = to_string(parsed.billable) ?? "1"
+      ua = downcase(to_string(.user_agent))
+      if raw_bill == "0" || contains(ua, "watchdog") {
+        .billable = 0
+      } else {
+        .billable = 1
+      }
+      }
+
+      # Geo & ASN defaults
+      .geo_country = "XX"
+      .geo_region = "Unknown"
+      .geo_city = "Unknown"
+      .asn = 0
+      .asn_org = "Unknown"
+
+sinks:
+  clickhouse_stream_sessions:
+    type: clickhouse
+    inputs:
+      - parse_stream_session
+    endpoint: http://clickhouse-hub:8123
+    database: radio_analytics
+    table: stream_sessions_raw
+    auth:
+      strategy: basic
+      user: default
+      password: ClickHousePass123
+    skip_unknown_fields: true
+    buffer:
+      type: disk
+      max_size: 536870912  # 512 MB disk-spooling backpressure
+    batch:
+      max_events: 500
+      timeout_secs: 2

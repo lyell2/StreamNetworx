@@ -1,0 +1,25 @@
+api: yes
+apiAddress: :9997
+
+externalAuthenticationURL: http://127.0.0.1:5000/api/v1/auth
+
+srt: yes
+srtAddress: :6000
+
+paths:
+  '~^live/(.+)$':
+    source: publisher
+    runOnReady: >
+      ffmpeg -nostdin -re -i "srt://127.0.0.1:6000?streamid=read:live/$G1"
+      -c:a libmp3lame -b:a 192k -ar 44100 -ac 2 -content_type audio/mpeg
+      -f mp3 "icecast://source:HackmeIcecastPass@127.0.0.1:8000/$G1.mp3"
+    runOnReadyRestart: yes
+
+  '~^mesh/(.+)$':
+    source: srt://10.10.0.1:6000?streamid=read:live/$G1
+    sourceOnDemand: yes
+    runOnReady: >
+      ffmpeg -nostdin -re -i "srt://127.0.0.1:6000?streamid=read:mesh/$G1"
+      -c:a libmp3lame -b:a 192k -ar 44100 -ac 2 -content_type audio/mpeg
+      -f mp3 "icecast://source:HackmeIcecastPass@127.0.0.1:8000/$G1.mp3"
+    runOnReadyRestart: yes
