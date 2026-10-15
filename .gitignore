@@ -13,3 +13,5 @@ node/
 __pycache__/
 *.pyc
 .DS_Store
+bin/
+get-docker.sh
