@@ -63,6 +63,8 @@ def monitor():
             print(f"[ALERT] [DEAD AIR] {msg}", flush=True)
             if now - last_alert_time > ALERT_COOLDOWN:
                 dispatch_webhook("SILENCE_START", msg, {"start_offset": t_sec})
+                # Evict frozen encoder to force fallback
+                subprocess.run([sys.executable, "scripts/stream_evict.py", STATION_NAME], capture_output=True)
                 last_alert_time = now
 
         m_end = re_end.search(line)
