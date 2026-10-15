@@ -1,0 +1,11 @@
+FROM python:3.11-alpine
+
+RUN apk add --no-cache ffmpeg curl tzdata
+
+WORKDIR /app
+
+COPY scripts/stream_watchdog.py /app/stream_watchdog.py
+
+ENV PYTHONUNBUFFERED=1
+
+CMD ["python", "stream_watchdog.py"]

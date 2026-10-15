@@ -6,3 +6,10 @@
 *.mp3
 __pycache__/
 clickhouse_data/
+logs/
+node/
+*.log
+*.csv
+__pycache__/
+*.pyc
+.DS_Store

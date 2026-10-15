@@ -1,0 +1,110 @@
+services:
+  central-clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: clickhouse-hub
+    restart: unless-stopped
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    environment:
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=ClickHousePass123
+      - CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1
+    volumes:
+      - ./data/clickhouse:/var/lib/clickhouse
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  central-nats:
+    image: nats:2.10-alpine
+    container_name: nats-hub
+    restart: unless-stopped
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+
+  central-redis:
+    image: redis:7-alpine
+    container_name: redis-hub
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  stream-node:
+    image: stream-node:latest
+    container_name: stream-node-combo
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1/healthz || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+    entrypoint: ["/app/scripts/entrypoint.sh"]
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    ports:
+      - "8080:80"
+      - "127.0.0.1:5000:5000"              # Metadata Ingest
+      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:9997:9997"
+      - "6000:6000/udp"
+      - "127.0.0.1:8888:8888"
+      - "127.0.0.1:8889:8889"
+      - "9111:9111/udp"
+      - "51820:51820/udp"
+    volumes:
+      - ./configs:/etc/streaming
+      - ./scripts:/app/scripts
+      - ./logs/icecast2:/var/log/icecast2
+    environment:
+      - WG_ADDRESS=10.10.0.1/24
+      - MTX_API=yes
+      - MTX_APIADDRESS=:9997
+      - BOOTSTRAP_PEERS=""
+      - WG_PORT=51820
+      - MESH_GOSSIP_PORT=9111
+      - TZ=Africa/Johannesburg
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  vector:
+    image: timberio/vector:0.38.0-alpine
+    container_name: vector-agent
+    restart: unless-stopped
+    volumes:
+      - ./configs/vector.yaml:/etc/vector/vector.yaml:ro
+      - ./logs/icecast2:/var/log/icecast2:ro
+    environment:
+      - TZ=Africa/Johannesburg
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - stream-node
+
+  stream-watchdog:
+    build:
+      context: .
+      dockerfile: Dockerfile.watchdog
+    container_name: stream-watchdog
+    volumes:
+      - ./scripts/stream_watchdog.py:/app/stream_watchdog.py:ro
+    restart: unless-stopped
+    environment:
+      - TZ=Africa/Johannesburg
+      - CLICKHOUSE_URL=http://host.docker.internal:8123/
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=ClickHousePass123
+      - ICECAST_STATUS_URL=http://host.docker.internal:8000/status-json.xsl
+      - ICECAST_STREAM_BASE=http://host.docker.internal:8000
+      - NODE_ID=sa-1-monitoring
+      - SILENCE_THRESHOLD_DB=-50.0
+      - POLL_INTERVAL=10
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - stream-node
