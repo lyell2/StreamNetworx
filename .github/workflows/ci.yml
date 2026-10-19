@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python-tests:
+    name: Python unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install fastapi uvicorn pydantic httpx redis python-multipart nats-py==2.9.0
+
+      - name: Compile Python sources
+        run: python -m compileall -q scripts services tests test_*.py
+
+      - name: Run mesh and metadata tests
+        run: PYTHONPATH=. python -m unittest discover -s tests -v
+
+      - name: Run control API tests
+        run: |
+          cd services/control_api
+          python -m unittest -q test_control_auth test_control_state_sync
+
+      - name: Run analytics API tests
+        run: |
+          cd services/analytics_api
+          python -m unittest -q test_playback_tokens
+
+  docker-and-compose:
+    name: Docker builds and Compose validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate shell scripts
+        run: bash -n scripts/*.sh
+
+      - name: Validate Compose configuration
+        run: |
+          printf '%s\n' \
+            'CLICKHOUSE_PASSWORD=ci-clickhouse-password-32-characters' \
+            'REDIS_PASSWORD=ci-redis-password-32-characters' \
+            'NATS_CLIENT_PASSWORD=ci-nats-client-password-32-characters' \
+            'NATS_CLUSTER_PASSWORD=ci-nats-cluster-password-32-chars' \
+            'MESH_INTERNAL_SECRET=ci-mesh-internal-secret-32-characters' \
+            'ICECAST_SOURCE_PASS=ci-icecast-source-password-32-chars' \
+            'ICECAST_ADMIN_PASS=ci-icecast-admin-password-32-chars' \
+            'HMAC_SECRET_KEY=ci-hmac-secret-key-32-characters' \
+            > .env.ci
+          docker compose --env-file .env.ci config --quiet
+          rm -f .env.ci
+
+      - name: Build stream node image
+        run: docker build -t stream-node:ci .
+
+      - name: Build control API image
+        run: docker build -t stream-control-api:ci services/control_api
+
+      - name: Build analytics API image
+        run: docker build -t stream-analytics-api:ci services/analytics_api
+
+  secret-scan:
+    name: Secret scanning
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan checked-out tree with Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_ARGS: --no-git --redact
+          GITLEAKS_ENABLE_COMMENTS: false
+          GITLEAKS_ENABLE_SUMMARY: true

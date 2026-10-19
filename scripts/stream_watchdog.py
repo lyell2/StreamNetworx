@@ -6,11 +6,11 @@ import urllib.request
 import json
 from concurrent.futures import ThreadPoolExecutor
 
-CH_URL = os.getenv("CLICKHOUSE_URL", "http://host.docker.internal:8123/")
+CH_URL = os.getenv("CLICKHOUSE_URL", "http://clickhouse-hub:8123/")
 CH_USER = os.getenv("CLICKHOUSE_USER", "default")
-CH_PASS = os.getenv("CLICKHOUSE_PASSWORD", "ClickHousePass123")
-ICECAST_STATUS_URL = os.getenv("ICECAST_STATUS_URL", "http://host.docker.internal:8000/status-json.xsl")
-ICECAST_STREAM_BASE = os.getenv("ICECAST_STREAM_BASE", "http://host.docker.internal:8000")
+CH_PASS = os.environ["CLICKHOUSE_PASSWORD"]
+ICECAST_STATUS_URL = os.getenv("ICECAST_STATUS_URL", "http://stream-node:8000/status-json.xsl")
+ICECAST_STREAM_BASE = os.getenv("ICECAST_STREAM_BASE", "http://stream-node:8000")
 NODE_ID = os.getenv("NODE_ID", "sa-1-monitoring")
 SILENCE_THRESHOLD_DB = float(os.getenv("SILENCE_THRESHOLD_DB", "-50.0"))
 POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "10"))
@@ -86,13 +86,13 @@ def probe_mount(mount, stream_statuses):
     try:
         res = subprocess.run(cmd, stderr=subprocess.PIPE, stdout=subprocess.DEVNULL, text=True, timeout=6)
         output = res.stderr
-        
+
         rms_match = re.search(r"RMS level dB:\s+([-\d\.]+)", output)
         peak_match = re.search(r"Peak level dB:\s+([-\d\.]+)", output)
-        
+
         rms = float(rms_match.group(1)) if rms_match else -100.0
         peak = float(peak_match.group(1)) if peak_match else -100.0
-        
+
         state = "SILENCE" if rms <= SILENCE_THRESHOLD_DB else "HEALTHY"
         return path, state, rms, peak, mount["listeners"], mount["bitrate"]
     except Exception:
@@ -105,7 +105,7 @@ def push_metrics_batch(results):
     values = []
     for path, state, rms, peak, listeners, bitrate in results:
         values.append(f"('{ts}', '{NODE_ID}', '{path}', 0, {listeners}, '{state}', {rms:.2f}, {peak:.2f}, {bitrate})")
-        
+
         if state in ("SILENCE", "OFFLINE"):
             consecutive_silence[path] = consecutive_silence.get(path, 0) + 1
             if consecutive_silence[path] == 3:
@@ -129,7 +129,7 @@ if __name__ == "__main__":
     while True:
         stream_statuses = get_stream_statuses()
         mounts = get_all_active_mounts()
-        
+
         known_mounts = {m["path"] for m in mounts}
         for path, status in stream_statuses.items():
             if status in ("STOPPED", "SUSPENDED") and path not in known_mounts:

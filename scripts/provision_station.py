@@ -16,7 +16,7 @@ import xml.etree.ElementTree as ET
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIGS_DIR = os.path.join(BASE_DIR, "configs")
 ICECAST_XML = os.path.join(CONFIGS_DIR, "icecast.xml")
-PUBLISHERS_JSON = os.path.join(CONFIGS_DIR, "publishers.json")
+PUBLISHERS_JSON = os.path.join(BASE_DIR, "secrets", "publishers.json")
 CONTAINER_NAME = "stream-node-combo"
 
 def main():
@@ -74,6 +74,7 @@ def main():
         }
         with open(PUBLISHERS_JSON, "w") as f:
             json.dump(publishers, f, indent=2)
+        os.chmod(PUBLISHERS_JSON, 0o600)
         print(f"[✓] Registered publisher credentials in configs/publishers.json")
 
         # 2b. Initialize metadata staging directory inside container

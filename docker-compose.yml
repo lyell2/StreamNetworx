@@ -4,39 +4,65 @@ services:
     container_name: clickhouse-hub
     restart: unless-stopped
     ports:
-      - "8123:8123"
-      - "9000:9000"
+      - "127.0.0.1:8123:8123"
+      - "127.0.0.1:9000:9000"
     environment:
       - CLICKHOUSE_USER=default
-      - CLICKHOUSE_PASSWORD=ClickHousePass123
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:?CLICKHOUSE_PASSWORD must be set in .env}
       - CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1
     volumes:
       - ./data/clickhouse:/var/lib/clickhouse
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - ./init-db:/docker-entrypoint-initdb.d:ro
 
-  central-nats:
+  nats-primary:
     image: nats:2.10-alpine
-    container_name: nats-hub
+    container_name: stream-nats
     restart: unless-stopped
-    ports:
-      - "4222:4222"
-      - "8222:8222"
+    network_mode: "service:stream-node"
+    env_file:
+      - .env
+    volumes:
+      - ./scripts/run_nats.sh:/app/run_nats.sh:ro
+      - stream-node-wireguard:/etc/wireguard:ro
+    entrypoint: ["/bin/sh", "/app/run_nats.sh"]
+    environment:
+      - NODE_ID=${NODE_ID:-sa-1-monitoring}
+      - NATS_CLIENT_USER=${NATS_CLIENT_USER:-metadata}
+      - NATS_CLIENT_PASSWORD=${NATS_CLIENT_PASSWORD:?NATS_CLIENT_PASSWORD must be set in .env}
+      - NATS_CLUSTER_USER=${NATS_CLUSTER_USER:-mesh-route}
+      - NATS_CLUSTER_PASSWORD=${NATS_CLUSTER_PASSWORD:?NATS_CLUSTER_PASSWORD must be set in .env}
+      - NATS_ROUTES=${NATS_ROUTES-}
+      - NATS_WAIT_FOR_MESH=${NATS_WAIT_FOR_MESH:-0}
+    depends_on:
+      - stream-node
 
   central-redis:
     image: redis:7-alpine
     container_name: redis-hub
     restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}"]
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - ./data/redis:/data
+
+  central-redis-peer:
+    profiles: ["mesh-test"]
+    image: redis:7-alpine
+    container_name: redis-hub-peer
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}"]
+    volumes:
+      - redis-peer-data:/data
 
   stream-node:
     image: stream-node:latest
     container_name: stream-node-combo
+    hostname: ${NODE_ID:-sa-1-monitoring}
     env_file:
       - .env
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://127.0.0.1/healthz || exit 1"]
+      test: ["CMD-SHELL", "curl -k -f https://127.0.0.1/healthz || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 3
@@ -48,29 +74,108 @@ services:
     devices:
       - /dev/net/tun:/dev/net/tun
     ports:
-      - "8080:80"
-      - "127.0.0.1:5000:5000"              # Metadata Ingest
+      - "8080:443"
       - "127.0.0.1:8000:8000"
       - "127.0.0.1:9997:9997"
       - "6000:6000/udp"
       - "127.0.0.1:8888:8888"
       - "127.0.0.1:8889:8889"
-      - "9111:9111/udp"
       - "51820:51820/udp"
     volumes:
       - ./configs:/etc/streaming
       - ./scripts:/app/scripts
+      - ./secrets:/app/secrets:ro
       - ./logs/icecast2:/var/log/icecast2
+      - ./data/letsencrypt:/etc/letsencrypt:ro
+      - stream-node-wireguard:/etc/wireguard
     environment:
-      - WG_ADDRESS=10.10.0.1/24
-      - MTX_API=yes
-      - MTX_APIADDRESS=:9997
-      - BOOTSTRAP_PEERS=""
-      - WG_PORT=51820
+      - NODE_ID=${NODE_ID:-sa-1-monitoring}
+      - WG_ADDRESS=${WG_ADDRESS-10.10.0.1/24}
+      - WG_PORT=${WG_PORT:-51820}
       - MESH_GOSSIP_PORT=9111
+      - MESH_INTERNAL_SECRET=${MESH_INTERNAL_SECRET:?MESH_INTERNAL_SECRET must be set in .env}
+      - MESH_BOOTSTRAP_URL=${MESH_BOOTSTRAP_URL-}
+      - PUBLIC_WG_ENDPOINT=${PUBLIC_WG_ENDPOINT-}
+      - MESH_GATEWAY_UPSTREAM=stream-analytics-api:5050
+      - MESH_CONTROL_UPSTREAM=stream-control-service:5060
+      - AUTH_TOKENS_FILE=/app/secrets/publishers.json
+      - CLICKHOUSE_URL=http://clickhouse-hub:8123
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:?CLICKHOUSE_PASSWORD must be set in .env}
+      - ICECAST_SOURCE_PASS=${ICECAST_SOURCE_PASS:?ICECAST_SOURCE_PASS must be set in .env}
+      - ICECAST_ADMIN_USER=admin
+      - ICECAST_ADMIN_PASS=${ICECAST_ADMIN_PASS:?ICECAST_ADMIN_PASS must be set in .env}
+      - HMAC_SECRET_KEY=${HMAC_SECRET_KEY:?HMAC_SECRET_KEY must be set in .env}
+      - NATS_URL=nats://${NATS_CLIENT_USER:-metadata}:${NATS_CLIENT_PASSWORD:?NATS_CLIENT_PASSWORD must be set in .env}@127.0.0.1:4222
       - TZ=Africa/Johannesburg
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    depends_on:
+      - central-clickhouse
+      - central-redis
+
+  stream-node-peer:
+    profiles: ["mesh-test"]
+    image: stream-node:latest
+    container_name: stream-node-peer
+    hostname: sa-2-monitoring
+    restart: unless-stopped
+    entrypoint: ["/app/scripts/entrypoint.sh"]
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    volumes:
+      - ./configs:/etc/streaming
+      - ./scripts:/app/scripts
+      - ./secrets:/app/secrets:ro
+      - stream-node-peer-logs:/var/log/icecast2
+      - ./data/letsencrypt:/etc/letsencrypt:ro
+      - stream-node-peer-wireguard:/etc/wireguard
+    environment:
+      - NODE_ID=sa-2-monitoring
+      - WG_ADDRESS=
+      - WG_PORT=51821
+      - MESH_GOSSIP_PORT=9111
+      - MESH_INTERNAL_SECRET=${MESH_INTERNAL_SECRET:?MESH_INTERNAL_SECRET must be set in .env}
+      - BOOTSTRAP_PEERS=stream-node:9111
+      - MESH_GATEWAY_UPSTREAM=stream-analytics-api-peer:5050
+      - MESH_CONTROL_UPSTREAM=stream-control-service-peer:5060
+      - AUTH_TOKENS_FILE=/app/secrets/publishers.json
+      - CLICKHOUSE_URL=http://clickhouse-hub:8123
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:?CLICKHOUSE_PASSWORD must be set in .env}
+      - ICECAST_SOURCE_PASS=${ICECAST_SOURCE_PASS:?ICECAST_SOURCE_PASS must be set in .env}
+      - ICECAST_ADMIN_USER=admin
+      - ICECAST_ADMIN_PASS=${ICECAST_ADMIN_PASS:?ICECAST_ADMIN_PASS must be set in .env}
+      - HMAC_SECRET_KEY=${HMAC_SECRET_KEY:?HMAC_SECRET_KEY must be set in .env}
+      - NATS_URL=nats://${NATS_CLIENT_USER:-metadata}:${NATS_CLIENT_PASSWORD:?NATS_CLIENT_PASSWORD must be set in .env}@127.0.0.1:4222
+      - TZ=Africa/Johannesburg
+    depends_on:
+      - stream-node
+      - central-clickhouse
+      - central-redis
+
+  nats-peer:
+    profiles: ["mesh-test"]
+    image: nats:2.10-alpine
+    container_name: stream-nats-peer
+    restart: unless-stopped
+    network_mode: "service:stream-node-peer"
+    env_file:
+      - .env
+    volumes:
+      - ./scripts/run_nats.sh:/app/run_nats.sh:ro
+      - stream-node-peer-wireguard:/etc/wireguard:ro
+    entrypoint: ["/bin/sh", "/app/run_nats.sh"]
+    environment:
+      - NODE_ID=sa-2-monitoring
+      - NATS_CLIENT_USER=${NATS_CLIENT_USER:-metadata}
+      - NATS_CLIENT_PASSWORD=${NATS_CLIENT_PASSWORD:?NATS_CLIENT_PASSWORD must be set in .env}
+      - NATS_CLUSTER_USER=${NATS_CLUSTER_USER:-mesh-route}
+      - NATS_CLUSTER_PASSWORD=${NATS_CLUSTER_PASSWORD:?NATS_CLUSTER_PASSWORD must be set in .env}
+      - NATS_ROUTES=${NATS_ROUTES-}
+      - NATS_WAIT_FOR_MESH=1
+    depends_on:
+      - stream-node-peer
 
   vector:
     image: timberio/vector:0.38.0-alpine
@@ -80,9 +185,8 @@ services:
       - ./configs/vector.yaml:/etc/vector/vector.yaml:ro
       - ./logs/icecast2:/var/log/icecast2:ro
     environment:
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:?CLICKHOUSE_PASSWORD must be set in .env}
       - TZ=Africa/Johannesburg
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     depends_on:
       - stream-node
 
@@ -96,15 +200,120 @@ services:
     restart: unless-stopped
     environment:
       - TZ=Africa/Johannesburg
-      - CLICKHOUSE_URL=http://host.docker.internal:8123/
+      - CLICKHOUSE_URL=http://clickhouse-hub:8123/
       - CLICKHOUSE_USER=default
-      - CLICKHOUSE_PASSWORD=ClickHousePass123
-      - ICECAST_STATUS_URL=http://host.docker.internal:8000/status-json.xsl
-      - ICECAST_STREAM_BASE=http://host.docker.internal:8000
-      - NODE_ID=sa-1-monitoring
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:?CLICKHOUSE_PASSWORD must be set in .env}
+      - ICECAST_STATUS_URL=http://stream-node:8000/status-json.xsl
+      - ICECAST_STREAM_BASE=http://stream-node:8000
+      - NODE_ID=${NODE_ID:-sa-1-monitoring}
       - SILENCE_THRESHOLD_DB=-50.0
       - POLL_INTERVAL=10
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     depends_on:
       - stream-node
+      - central-clickhouse
+
+  stream-control-service:
+    build: ./services/control_api
+    container_name: stream-control-service
+    restart: unless-stopped
+    volumes:
+      - ./secrets:/app/secrets:ro
+      - stream-node-wireguard:/app/mesh:ro
+    expose:
+      - "5060"
+    environment:
+      - NODE_ID=${NODE_ID:-sa-1-monitoring}
+      - ICECAST_ADMIN_URL=http://stream-node:8000
+      - ICECAST_ADMIN_USER=admin
+      - ICECAST_ADMIN_PASS=${ICECAST_ADMIN_PASS:?ICECAST_ADMIN_PASS must be set in .env}
+      - REDIS_URL=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}@redis-hub:6379/1
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
+      - MESH_INTERNAL_SECRET=${MESH_INTERNAL_SECRET:?MESH_INTERNAL_SECRET must be set in .env}
+      - MESH_STATE_FILE=/app/mesh/peers.json
+      - MESH_GATEWAY_URL=http://stream-node
+      - ENABLE_COMPLIANCE_LOGGING=false
+    depends_on:
+      - stream-node
+      - central-redis
+
+  stream-control-service-peer:
+    profiles: ["mesh-test"]
+    build: ./services/control_api
+    container_name: stream-control-service-peer
+    restart: unless-stopped
+    volumes:
+      - ./secrets:/app/secrets:ro
+      - stream-node-peer-wireguard:/app/mesh:ro
+    expose:
+      - "5060"
+    environment:
+      - NODE_ID=sa-2-monitoring
+      - ICECAST_ADMIN_URL=http://stream-node-peer:8000
+      - ICECAST_ADMIN_USER=admin
+      - ICECAST_ADMIN_PASS=${ICECAST_ADMIN_PASS:?ICECAST_ADMIN_PASS must be set in .env}
+      - REDIS_URL=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}@redis-hub-peer:6379/1
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
+      - MESH_INTERNAL_SECRET=${MESH_INTERNAL_SECRET:?MESH_INTERNAL_SECRET must be set in .env}
+      - MESH_STATE_FILE=/app/mesh/peers.json
+      - MESH_GATEWAY_URL=http://stream-node-peer
+      - ENABLE_COMPLIANCE_LOGGING=false
+    depends_on:
+      - stream-node-peer
+      - central-redis-peer
+
+  stream-analytics-api:
+    build: ./services/analytics_api
+    container_name: stream-analytics-api
+    restart: unless-stopped
+    volumes:
+      - ./secrets:/app/secrets:ro
+      - stream-node-wireguard:/app/mesh:ro
+    expose:
+      - "5050"
+    environment:
+      - CLICKHOUSE_HTTP=http://clickhouse-hub:8123
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASS=${CLICKHOUSE_PASSWORD:?CLICKHOUSE_PASSWORD must be set in .env}
+      - NODE_ID=${NODE_ID:-sa-1-monitoring}
+      - MESH_ADVERTISED_URL=http://stream-analytics-api:5050
+      - MESH_INTERNAL_SECRET=${MESH_INTERNAL_SECRET:?MESH_INTERNAL_SECRET must be set in .env}
+      - MESH_STATE_FILE=/app/mesh/peers.json
+      - MESH_GATEWAY_URL=http://stream-node
+      - INTERNAL_MESH_PEERS=${ANALYTICS_MESH_PEERS:-}
+      - REDIS_URL=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}@redis-hub:6379/1
+      - ICECAST_ADMIN_USER=admin
+      - ICECAST_ADMIN_PASS=${ICECAST_ADMIN_PASS:?ICECAST_ADMIN_PASS must be set in .env}
+    depends_on:
+      - central-clickhouse
+      - central-redis
+
+  stream-analytics-api-peer:
+    profiles: ["mesh-test"]
+    build: ./services/analytics_api
+    container_name: stream-analytics-api-peer
+    restart: unless-stopped
+    volumes:
+      - ./secrets:/app/secrets:ro
+      - stream-node-peer-wireguard:/app/mesh:ro
+    expose:
+      - "5050"
+    environment:
+      - CLICKHOUSE_HTTP=http://clickhouse-hub:8123
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASS=${CLICKHOUSE_PASSWORD:?CLICKHOUSE_PASSWORD must be set in .env}
+      - NODE_ID=sa-2-monitoring
+      - MESH_ADVERTISED_URL=http://stream-analytics-api-peer:5050
+      - MESH_INTERNAL_SECRET=${MESH_INTERNAL_SECRET:?MESH_INTERNAL_SECRET must be set in .env}
+      - MESH_STATE_FILE=/app/mesh/peers.json
+      - MESH_GATEWAY_URL=http://stream-node-peer
+      - INTERNAL_MESH_PEERS=http://stream-analytics-api:5050
+      - REDIS_URL=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}@redis-hub-peer:6379/1
+    depends_on:
+      - central-clickhouse
+      - central-redis-peer
+
+volumes:
+  redis-peer-data:
+  stream-node-peer-logs:
+  stream-node-wireguard:
+  stream-node-peer-wireguard:

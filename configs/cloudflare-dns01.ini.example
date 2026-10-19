@@ -1,0 +1,4 @@
+# Copy this file to secrets/cloudflare.ini, replace the token, then run:
+#   chmod 600 secrets/cloudflare.ini
+# The token needs only Zone:DNS:Edit permission for streammedia.org.za.
+dns_cloudflare_api_token = replace-with-narrowly-scoped-cloudflare-token

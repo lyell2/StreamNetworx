@@ -7,11 +7,11 @@ import requests
 
 CH_URL = os.getenv("CLICKHOUSE_URL", "http://127.0.0.1:8123/")
 CH_USER = os.getenv("CLICKHOUSE_USER", "default")
-CH_PASS = os.getenv("CLICKHOUSE_PASSWORD", "ClickHousePass123")
+CH_PASS = os.environ["CLICKHOUSE_PASSWORD"]
 MEDIAMTX_API = os.getenv("MEDIAMTX_API", "http://127.0.0.1:9997")
 ICECAST_URL = os.getenv("ICECAST_URL", "http://127.0.0.1:8000")
 ICECAST_ADMIN_USER = os.getenv("ICECAST_ADMIN_USER", "admin")
-ICECAST_ADMIN_PASS = os.getenv("ICECAST_ADMIN_PASS", "HackmeIcecastPass")
+ICECAST_ADMIN_PASS = os.environ["ICECAST_ADMIN_PASS"]
 
 def query_ch(sql):
     pwd_mgr = urllib.request.HTTPPasswordMgrWithDefaultRealm()
@@ -34,8 +34,8 @@ def resolve_stream(identifier):
         clean_mount += ".mp3"
 
     sql = f"""
-    SELECT stream_id, mountpoint, stream_name, customer_id, status, max_listeners 
-    FROM streamnet.streams 
+    SELECT stream_id, mountpoint, stream_name, customer_id, status, max_listeners
+    FROM streamnet.streams
     WHERE stream_id = '{clean}' OR mountpoint = '{clean_mount}'
     LIMIT 1 FORMAT JSONEachRow;
     """

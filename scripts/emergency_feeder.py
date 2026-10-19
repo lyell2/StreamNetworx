@@ -7,7 +7,7 @@ import subprocess
 AUDIO_FILE = os.getenv("EMERGENCY_CART_PATH", "/etc/streaming/emergency_loop.mp3")
 ICECAST_HOST = os.getenv("ICECAST_HOST", "127.0.0.1")
 ICECAST_PORT = os.getenv("ICECAST_PORT", "8000")
-ICECAST_PASS = os.getenv("ICECAST_SOURCE_PASS", "HackmeIcecastPass")
+ICECAST_PASS = os.environ["ICECAST_SOURCE_PASS"]
 MOUNTPOINT = os.getenv("EMERGENCY_MOUNT", "/emergency.mp3")
 
 ICECAST_STREAM_URL = f"icecast://source:{ICECAST_PASS}@{ICECAST_HOST}:{ICECAST_PORT}{MOUNTPOINT}"

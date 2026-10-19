@@ -1,0 +1,17 @@
+title = "StreamNetworx Gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Permit documented placeholders and local-only generated secret locations"
+paths = [
+  '''^configs/cloudflare-dns01\.ini\.example$''',
+  '''^\.env\.example$''',
+  '''^docs/master_project_plan\.md$'''
+]
+regexes = [
+  '''replace-with-narrowly-scoped-cloudflare-token''',
+  '''ci-[a-z-]+-[0-9a-z-]+''',
+  '''Hackme(Icecast|Admin)Pass'''
+]

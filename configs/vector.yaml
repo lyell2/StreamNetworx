@@ -23,12 +23,17 @@ transforms:
         abort
       }
 
+      .session_id = to_string(parsed.session_id) ?? ""
+      if .session_id == "" {
+        abort
+      }
 
       .event = "disconnect"
-      .timestamp_ms = to_int(parsed.timestamp_ms) ?? (to_unix_timestamp(now()) * 1000)
+      timestamp_seconds = to_float(parsed.timestamp_ms) ?? to_unix_timestamp(now())
+      .timestamp_ms = to_int(timestamp_seconds * 1000.0)
       duration_sec = to_float(parsed.duration) ?? 0.0
       .duration = duration_sec
-      .started_at = to_int(.timestamp_ms - (duration_sec * 1000.0))
+      .started_at_ms = to_int(.timestamp_ms - (duration_sec * 1000.0))
 
       .node_id = to_string(parsed.node_id) ?? "sa-1-monitoring"
       .client_ip = to_string(parsed.client_ip) ?? "127.0.0.1"
@@ -36,34 +41,18 @@ transforms:
       .status = to_int(parsed.status) ?? 200
       .bytes_sent = to_int(parsed.bytes_sent) ?? 0
       .user_agent = to_string(parsed.user_agent) ?? ""
+      .listener_id = to_string(parsed.listener_id) ?? ""
+      .billable = to_int(parsed.billable) ?? 1
       .referer = to_string(parsed.referer) ?? ""
       .ssl_protocol = to_string(parsed.ssl_protocol) ?? ""
       .ssl_cipher = to_string(parsed.ssl_cipher) ?? ""
 
-      # Identifiers & flags
-      .lid = to_string(parsed.lid) ?? ""
-      .sid = to_string(parsed.sid) ?? ""
-
-      raw_bill = to_string(parsed.billable) ?? "1"
-      ua = downcase(to_string(.user_agent))
-      if raw_bill == "0" || contains(ua, "watchdog") {
-        .billable = 0
-      } else {
-        raw_bill = to_string(parsed.billable) ?? "1"
-      ua = downcase(to_string(.user_agent))
-      if raw_bill == "0" || contains(ua, "watchdog") {
-        .billable = 0
-      } else {
-        .billable = 1
-      }
-      }
-
       # Geo & ASN defaults
-      .geo_country = "XX"
-      .geo_region = "Unknown"
-      .geo_city = "Unknown"
-      .asn = 0
-      .asn_org = "Unknown"
+      .geo_country = to_string(parsed.geo_country) ?? "XX"
+      .geo_region = to_string(parsed.geo_region) ?? "Unknown"
+      .geo_city = to_string(parsed.geo_city) ?? "Unknown"
+      .asn = to_int(parsed.asn) ?? 0
+      .asn_org = to_string(parsed.asn_org) ?? "Unknown"
 
 sinks:
   clickhouse_stream_sessions:
@@ -76,7 +65,7 @@ sinks:
     auth:
       strategy: basic
       user: default
-      password: ClickHousePass123
+      password: ${CLICKHOUSE_PASSWORD}
     skip_unknown_fields: true
     buffer:
       type: disk

@@ -1,0 +1,32 @@
+[sources.icecast_webhooks]
+type = "http"
+address = "0.0.0.0:8686"
+path = "/webhook/listener"
+
+[transforms.enrich_sessions]
+type = "remap"
+inputs = ["icecast_webhooks"]
+source = '''
+query_params = parse_query_string!(.query)
+.listener_uuid = query_params.uuid ?? ""
+.is_native = if length(.listener_uuid) > 0 { 1 } else { 0 }
+
+geo = get_geoip(.client_ip)
+.country = geo.country.iso_code ?? "Unknown"
+.city = geo.city.names.en ?? "Unknown"
+.isp = geo.autonomous_system.organization ?? "Unknown"
+
+ua = parse_user_agent(.user_agent)
+.device_category = ua.device.family ?? "Other"
+'''
+
+[sinks.clickhouse_sink]
+type = "clickhouse"
+inputs = ["enrich_sessions"]
+endpoint = "http://central-clickhouse:8123"
+database = "streamnetworx"
+table = "listener_sessions"
+auth.strategy = "none"
+encoding.codec = "json"
+batch.max_events = 1000
+batch.timeout_secs = 5

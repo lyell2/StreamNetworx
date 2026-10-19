@@ -23,6 +23,8 @@ RUN apt-get update && apt-get install -y \
     jq \
     && rm -rf /var/lib/apt/lists/*
 
+RUN python3 -m pip install --break-system-packages --no-cache-dir nats-py==2.9.0
+
 COPY bin/mediamtx /usr/local/bin/mediamtx
 COPY bin/vector /usr/local/bin/vector
 WORKDIR /app

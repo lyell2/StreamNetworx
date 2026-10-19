@@ -1,0 +1,9 @@
+[Unit]
+Description=Renew the StreamNetworx TLS certificate
+ConditionPathExists=__INSTALL_DIR__/secrets/cloudflare.ini
+
+[Service]
+Type=oneshot
+WorkingDirectory=__INSTALL_DIR__
+ExecStart=__INSTALL_DIR__/scripts/renew_tls.sh
+TimeoutStartSec=10min

@@ -27,9 +27,11 @@ cleanup() {
 
 trap cleanup SIGTERM SIGINT SIGHUP
 
-export ICECAST_SOURCE_PASS="${ICECAST_SOURCE_PASS:-HackmeIcecastPass}"
-export ICECAST_ADMIN_PASS="${ICECAST_ADMIN_PASS:-HackmeAdminPass}"
-export HMAC_SECRET_KEY="${HMAC_SECRET_KEY:-secret_stream_key_99}"
+: "${ICECAST_SOURCE_PASS:?ICECAST_SOURCE_PASS must be set}"
+: "${ICECAST_ADMIN_PASS:?ICECAST_ADMIN_PASS must be set}"
+: "${HMAC_SECRET_KEY:?HMAC_SECRET_KEY must be set}"
+export MESH_GATEWAY_UPSTREAM="${MESH_GATEWAY_UPSTREAM:-stream-analytics-api:5050}"
+export MESH_CONTROL_UPSTREAM="${MESH_CONTROL_UPSTREAM:-stream-control-service:5060}"
 
 # 1. Hydrate Icecast config
 mkdir -p /etc/icecast2 /var/log/icecast2
@@ -40,12 +42,14 @@ chown -R icecast2:icecast /etc/icecast2 /var/log/icecast2 2>/dev/null || true
 
 # 2. Hydrate MediaMTX config
 cp /etc/streaming/mediamtx_combo.yml /etc/mediamtx_run.yml
-sed -i "s|icecast://source:.*@127.0.0.1:8000|icecast://source:${ICECAST_SOURCE_PASS}@127.0.0.1:8000|g" /etc/mediamtx_run.yml
+sed -i "s|__ICECAST_SOURCE_PASS__|${ICECAST_SOURCE_PASS}|g" /etc/mediamtx_run.yml
 
 # 3. Hydrate Nginx config
 mkdir -p /var/www/metadata /var/streaming /etc/nginx
 cp /etc/streaming/nginx.conf /etc/nginx/nginx.conf
-sed -i "s|secret_stream_key_99|${HMAC_SECRET_KEY}|g" /etc/nginx/nginx.conf
+sed -i "s|__HMAC_SECRET_KEY__|${HMAC_SECRET_KEY}|g" /etc/nginx/nginx.conf
+sed -i "s|__MESH_ANALYTICS_API_UPSTREAM__|${MESH_GATEWAY_UPSTREAM}|g" /etc/nginx/nginx.conf
+sed -i "s|__MESH_CONTROL_API_UPSTREAM__|${MESH_CONTROL_UPSTREAM}|g" /etc/nginx/nginx.conf
 
 # 4. Start Daemons
 python3 /app/scripts/mesh_agent.py &

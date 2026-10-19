@@ -8,7 +8,7 @@ from datetime import datetime
 
 CH_URL = os.getenv("CLICKHOUSE_URL", "http://127.0.0.1:8123")
 CH_USER = os.getenv("CLICKHOUSE_USER", "default")
-CH_PASS = os.getenv("CLICKHOUSE_PASSWORD", "ClickHousePass123")
+CH_PASS = os.environ["CLICKHOUSE_PASSWORD"]
 
 def run_ch_query(sql):
     url = f"{CH_URL}/?user={CH_USER}&password={CH_PASS}&query={urllib.parse.quote(sql)}"

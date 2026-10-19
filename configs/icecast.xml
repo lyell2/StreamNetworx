@@ -8,15 +8,15 @@
         <queue-size>524288</queue-size>
     </limits>
     <authentication>
-        <source-password>HackmeIcecastPass</source-password>
+        <source-password>__ICECAST_SOURCE_PASS__</source-password>
         <admin-user>admin</admin-user>
-        <admin-password>HackmeAdminPass</admin-password>
+        <admin-password>__ICECAST_ADMIN_PASS__</admin-password>
     </authentication>
     <listen-socket>
         <port>8000</port>
         <bind-address>0.0.0.0</bind-address>
     </listen-socket>
-    
+
     <!-- Emergency Mount (Hidden from public directory listings) -->
     <mount type="normal">
         <mount-name>/emergency.mp3</mount-name>

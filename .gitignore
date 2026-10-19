@@ -15,3 +15,17 @@ __pycache__/
 .DS_Store
 bin/
 get-docker.sh
+
+# Production Secrets & Local Data
+.env
+.env.*
+!.env.example
+secrets/clients.json
+secrets/publishers.json
+data/
+*.log
+
+# All locally generated credentials
+secrets/
+.vscode/
+backups/

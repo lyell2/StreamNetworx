@@ -15,7 +15,7 @@ import urllib.parse
 MEDIAMTX_API = os.getenv("MEDIAMTX_API", "http://127.0.0.1:9997")
 ICECAST_URL = os.getenv("ICECAST_URL", "http://127.0.0.1:8000")
 ICECAST_USER = os.getenv("ICECAST_ADMIN_USER", "admin")
-ICECAST_PASS = os.getenv("ICECAST_ADMIN_PASS", "HackmeAdminPass")
+ICECAST_PASS = os.environ["ICECAST_ADMIN_PASS"]
 
 def kick_mediamtx_publishers(station: str):
     path_target = f"live/{station}"

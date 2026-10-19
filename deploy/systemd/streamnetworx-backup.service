@@ -1,0 +1,8 @@
+[Unit]
+Description=Create an encrypted StreamNetworx cold backup
+
+[Service]
+Type=oneshot
+WorkingDirectory=__INSTALL_DIR__
+ExecStart=__INSTALL_DIR__/scripts/backup_streamnetworx.sh
+TimeoutStartSec=2h
