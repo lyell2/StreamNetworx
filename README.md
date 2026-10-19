@@ -7,7 +7,7 @@ Multi-tenant SRT-to-Icecast streaming radio platform with authenticated control,
 Use a reviewed release rather than a moving branch:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/lyell2/StreamNetworx/v1.0.0/scripts/install_vps.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/lyell2/StreamNetworx/v1.0.1/scripts/install_vps.sh | sudo bash
 ```
 
 The installer uses Docker only, leaves host ports 80/443 and MeshCentral unchanged, creates owner-only local secrets, builds the stack, installs TLS/backup timers, and serves the public proxy at `https://stream.streammedia.org.za:8080`.

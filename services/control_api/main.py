@@ -250,7 +250,7 @@ async def provision_station(req: StationCreate, caller: dict = Depends(verify_co
 
     await redis_client.hset(f"streamnet:station:{req.station_id}:meta", mapping={
         "station": req.station_id,
-        "mount": f"/{req.station_id}.mp3",
+        "mount": f"/live/{req.station_id}.mp3",
         "billing_status": "active",
         "studio_password": password,
         "updated_ms": int(time.time() * 1000),

@@ -134,15 +134,6 @@ def run_validation() -> int:
     tls_context = ssl.create_default_context()
 
     def containers() -> str:
-        output = docker(
-            "compose",
-            "--profile",
-            "mesh-test",
-            "ps",
-            "--format",
-            "{{.Name}}\t{{.Status}}",
-        ).stdout
-        statuses = dict(line.split("\t", 1) for line in output.splitlines() if "\t" in line)
         required = [
             "clickhouse-hub",
             "redis-hub",
@@ -153,12 +144,19 @@ def run_validation() -> int:
             "stream-watchdog",
             "vector-agent",
         ]
-        missing = [name for name in required if name not in statuses or "Up" not in statuses[name]]
-        if missing:
-            raise RuntimeError("not running: " + ",".join(missing))
-        if "healthy" not in statuses.get("stream-node-combo", ""):
-            raise RuntimeError("stream-node-combo is not healthy")
-        return f"{len(required)} required containers up"
+        deadline = time.time() + 60
+        while True:
+            output = docker("compose", "--profile", "mesh-test", "ps", "--format", "{{.Name}}\t{{.Status}}").stdout
+            statuses = dict(line.split("\t", 1) for line in output.splitlines() if "\t" in line)
+            missing = [name for name in required if name not in statuses or "Up" not in statuses[name]]
+            healthy = "healthy" in statuses.get("stream-node-combo", "")
+            if not missing and healthy:
+                return f"{len(required)} required containers up"
+            if time.time() >= deadline:
+                if missing:
+                    raise RuntimeError("not running: " + ",".join(missing))
+                raise RuntimeError("stream-node-combo is not healthy")
+            time.sleep(1)
 
     def tls_and_proxy_health() -> str:
         status, body, _ = public_request("/healthz", tls_context)
@@ -294,9 +292,27 @@ def run_validation() -> int:
             'curl -fsS -u "admin:${ICECAST_ADMIN_PASS}" http://127.0.0.1:8000/admin/stats',
             timeout=10,
         )
-        if f"/{STATION}.mp3" not in result.stdout:
-            raise RuntimeError("Icecast mount is absent")
-        return f"/{STATION}.mp3 is mounted"
+        if f"/live/{STATION}.mp3" not in result.stdout:
+            raise RuntimeError("Icecast live mount is absent")
+        return f"/live/{STATION}.mp3 is mounted"
+
+    def metadata_ingest() -> str:
+        registry = json.loads((ROOT / "secrets" / "publishers.json").read_text(encoding="utf-8"))
+        entry = registry.get(STATION)
+        token = entry.get("token") if isinstance(entry, dict) else entry
+        if not token:
+            raise RuntimeError("station metadata token is missing")
+        payload = json.dumps({"artist": "StreamNetworx", "title": "Validation Tone", "duration": 30, "type": "Song"}).encode()
+        status, body, _ = public_request(
+            f"/api/metadata/{STATION}",
+            tls_context,
+            method="POST",
+            body=payload,
+            headers={"Content-Type": "application/json", "X-Station-Token": token},
+        )
+        if status != 200:
+            raise RuntimeError(f"metadata ingest returned {status}: {body[:120]!r}")
+        return "authenticated metadata update accepted"
 
     def metadata_endpoint() -> str:
         status, body, _ = public_request(f"/{STATION}/nowplaying.json", tls_context)
@@ -340,6 +356,7 @@ def run_validation() -> int:
         check("srt-ingest", ensure_stream)
         check("listener-playback", listener_playback)
         check("icecast-mount", icecast_mount)
+        check("metadata-ingest", metadata_ingest)
         check("metadata", metadata_endpoint)
         check("watchdog", watchdog_metrics)
         check("listener-telemetry", listener_telemetry)

@@ -89,7 +89,7 @@ def update_icy(mount, text):
 
 def process_track(mount, artist, title, itype="Song", dur=0):
     mount = ("/" + mount.strip("/")).replace(".mp3", "") + ".mp3"
-    station = mount.strip("/").replace(".mp3", "")
+    station = mount.strip("/").removesuffix(".mp3").split("/")[-1]
     if not re.fullmatch(r"[a-zA-Z0-9_-]{2,64}", station):
         raise ValueError("Invalid station identifier")
     now_ms = int(time.time() * 1000)
@@ -132,7 +132,7 @@ def apply_remote_metadata(payload):
     station = str(payload.get("station", ""))
     if not re.fullmatch(r"[a-zA-Z0-9_-]{2,64}", station):
         return
-    if mount != f"/{station}.mp3":
+    if mount != f"/live/{station}.mp3":
         return
 
     try:
@@ -270,7 +270,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self._authorize_station(station):
             self._send_json_error(401, "unauthorized station token")
             return
-        mount = f"/{station}.mp3"
+        mount = f"/live/{station}.mp3"
         requested_mount = q.get("mount", [mount])[0]
         if requested_mount != mount:
             self._send_json_error(403, "station token does not authorize this mount")
@@ -334,7 +334,7 @@ class Handler(BaseHTTPRequestHandler):
                     artist = root.findtext(".//Artist") or root.findtext(".//artist") or ""
                     title = root.findtext(".//Title") or root.findtext(".//title") or ""
                     station = route_match.group(1) if route_match else (root.findtext(".//Station") or root.findtext(".//station") or "")
-                    mount = f"/{station}.mp3"
+                    mount = f"/live/{station}.mp3"
                     raw_dur = root.findtext(".//Duration") or root.findtext(".//duration") or "0"
                     dur = int(float(raw_dur))
                     itype = root.findtext(".//ItemType") or root.findtext(".//item_type") or "Song"
@@ -349,7 +349,7 @@ class Handler(BaseHTTPRequestHandler):
                     artist = d.get("artist", "")
                     title = d.get("title", "")
                     station = route_match.group(1) if route_match else d.get("station", "")
-                    mount = d.get("mountpoint") or f"/{station}.mp3"
+                    mount = d.get("mountpoint") or f"/live/{station}.mp3"
                     dur = int(d.get("duration", 0))
                     itype = d.get("type", "Song")
                 except Exception as e:
@@ -365,7 +365,7 @@ class Handler(BaseHTTPRequestHandler):
             if not self._authorize_station(station):
                 self._send_json_error(401, "unauthorized station token")
                 return
-            if mount != f"/{station}.mp3":
+            if mount != f"/live/{station}.mp3":
                 self._send_json_error(403, "station token does not authorize this mount")
                 return
 

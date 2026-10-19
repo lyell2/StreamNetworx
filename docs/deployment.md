@@ -18,13 +18,13 @@ The Nginx container terminates TLS for `stream.streammedia.org.za` on container 
 Install the reviewed release, not the moving `main` branch:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/lyell2/StreamNetworx/v1.0.0/scripts/install_vps.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/lyell2/StreamNetworx/v1.0.1/scripts/install_vps.sh | sudo bash
 ```
 
 To test a different reviewed tag or commit explicitly:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/lyell2/StreamNetworx/v1.0.0/scripts/install_vps.sh \
+curl -fsSL https://raw.githubusercontent.com/lyell2/StreamNetworx/v1.0.1/scripts/install_vps.sh \
   | sudo STREAMNETWORX_REF=<tag-or-commit> bash
 ```
 

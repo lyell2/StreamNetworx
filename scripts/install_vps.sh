@@ -8,7 +8,7 @@ if [[ "$EUID" -ne 0 ]]; then
 fi
 
 REPO_URL="${STREAMNETWORX_REPO:-https://github.com/lyell2/StreamNetworx.git}"
-REPO_REF="${STREAMNETWORX_REF:-v1.0.0}"
+REPO_REF="${STREAMNETWORX_REF:-v1.0.1}"
 INSTALL_DIR="${STREAMNETWORX_DIR:-/opt/streamnetworx}"
 PUBLIC_HOST="${STREAMNETWORX_HOST:-stream.streammedia.org.za}"
 
